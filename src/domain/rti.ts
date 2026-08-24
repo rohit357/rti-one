@@ -16,6 +16,31 @@ export interface RtiDraft {
   requestText: string
 }
 
+export interface RequestInterpretation {
+  location: string
+  governmentLevel: Jurisdiction
+  topic: string
+  authorityId: string
+  confidenceNote: string
+}
+
+export interface ClarificationRequest {
+  kind: 'clarification'
+  question: string
+  detail: string
+}
+
+export type InterpretationResult =
+  | { kind: 'ready'; interpretation: RequestInterpretation }
+  | ClarificationRequest
+
+export interface GuidedRequestSession {
+  need: string
+  interpretation?: RequestInterpretation
+  clarification?: ClarificationRequest
+  draft?: RtiDraft
+}
+
 export interface TrackingEvent {
   date: string
   title: string
