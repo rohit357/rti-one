@@ -1,69 +1,40 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
-import type { Authority, GuidedRequestSession, RequestInterpretation, RtiApplication, RtiDraft, User } from '../domain/rti'
+import { useState, type ReactNode } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import type { User } from '../domain/rti'
 import { authService } from '../services/authService'
-import { guidedRequestService } from '../services/guidedRequestService'
-import { interpretationService } from '../services/interpretationService'
-import { rtiService } from '../services/rtiService'
-
-const examples = [
-  'I need records from the Ministry of Road Transport and Highways about a delayed repair.',
-  'I want records from the Ministry of Railways about accessibility work at my station.',
-  'I need records from Delhi PWD about a streetlight repair request.'
-]
-
-const Loading = () => <p className="state">Working on it…</p>
-const ErrorState = ({ message }: { message: string }) => <p className="state error" role="alert">{message}</p>
-const authorityName = (id: string, list: Authority[]) => list.find(authority => authority.id === id)?.name ?? 'Public authority'
-
-function Shell({ user, children }: { user: User; children: ReactNode }) {
-  const navigate = useNavigate()
-  return <><header><Link className="brand" to="/dashboard">RTI One</Link><nav><Link to="/dashboard">My cases</Link><Link to="/rti/new">Ask for information</Link><button onClick={() => { authService.logout(); navigate('/login') }}>Sign out</button></nav></header><main><p className="hello">Signed in as {user.name}</p>{children}</main></>
-}
-
-function Login({ onLogin }: { onLogin: (user: User) => void }) {
-  const [email, setEmail] = useState('demo@rtione.in'); const [password, setPassword] = useState('demo123'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(''); try { onLogin(await authService.login(email, password)) } catch (err) { setError(err instanceof Error ? err.message : 'Could not sign in.') } finally { setBusy(false) } }
-  return <main className="auth"><section className="card login-card"><p className="eyebrow">RTI One · demo prototype</p><h1>Start with your question, not a government form.</h1><p>Describe what you need to know. RTI One will help you shape a clear request and suggest where to send it.</p><form onSubmit={submit}><label>Email<input value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" /></label><label>Password<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" /></label>{error && <ErrorState message={error} />}<button className="primary" disabled={busy}>{busy ? 'Signing in…' : 'Try the demo'}</button></form><small>Demo credentials are prefilled. This prototype uses synthetic data only.</small></section></main>
-}
-
-function Dashboard({ user }: { user: User }) {
-  const [apps, setApps] = useState<RtiApplication[] | null>(null); const [error, setError] = useState('')
-  useEffect(() => { rtiService.listApplications().then(setApps).catch(() => setError('Your cases could not be loaded.')) }, [])
-  return <Shell user={user}><section className="hero"><div><p className="eyebrow">Citizen case workspace</p><h1>What do you need to know?</h1><p>Start in plain language. We’ll help turn your question into a clear information request.</p></div><Link className="primary" to="/rti/new">Ask for information</Link></section><section className="case-section"><div className="section-heading"><div><p className="eyebrow">Your cases</p><h2>Requests you’re following</h2></div></div>{error ? <ErrorState message={error} /> : !apps ? <Loading /> : apps.length === 0 ? <div className="empty"><strong>Your workspace is ready.</strong><p>When you submit a request, its progress and records will live here.</p><Link to="/rti/new">Start with a question →</Link></div> : <div className="case-list">{apps.map(app => <Link className="case-card" to={`/applications/${app.id}`} key={app.id}><div><span className="status-pill">{app.status}</span><h3>{app.subject}</h3><small>{app.id} · submitted {app.createdAt}</small></div><span aria-hidden="true">→</span></Link>)}</div>}</section></Shell>
-}
-
-type FlowStep = 'need' | 'understood' | 'draft'
-function Progress({ step }: { step: FlowStep }) { const current = step === 'need' ? 1 : step === 'understood' ? 2 : 3; return <div className="progress" aria-label={`Step ${current} of 3`}><span className={current >= 1 ? 'active' : ''}>1 <small>Your question</small></span><span className={current >= 2 ? 'active' : ''}>2 <small>I understood</small></span><span className={current >= 3 ? 'active' : ''}>3 <small>Your draft</small></span></div> }
-
-function NewRti({ user }: { user: User }) {
-  const navigate = useNavigate()
-  const [session, setSession] = useState<GuidedRequestSession>(() => guidedRequestService.load())
-  const [step, setStep] = useState<FlowStep>(() => { const saved = guidedRequestService.load(); return saved.draft ? 'draft' : saved.interpretation ? 'understood' : 'need' })
-  const [authorities, setAuthorities] = useState<Authority[]>([]); const [busy, setBusy] = useState(false); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState('')
-  useEffect(() => { rtiService.listAuthorities().then(setAuthorities).catch(() => setError('Sample authorities could not be loaded.')) }, [])
-  const save = (next: GuidedRequestSession) => { setSession(next); guidedRequestService.save(next) }
-  const interpret = async () => { setBusy(true); setError(''); try { const result = await interpretationService.interpret(session.need); if (result.kind === 'clarification') { save({ need: session.need, clarification: result }); return } save({ need: session.need, interpretation: result.interpretation }); setStep('understood') } catch (err) { setError(err instanceof Error ? err.message : 'We could not interpret that request.') } finally { setBusy(false) } }
-  const editInterpretation = (key: keyof RequestInterpretation, value: string) => { if (!session.interpretation) return; const interpretation = { ...session.interpretation, [key]: value } as RequestInterpretation; if (key === 'governmentLevel') interpretation.authorityId = ''; save({ ...session, interpretation }) }
-  const generateDraft = () => { if (!session.interpretation?.authorityId) { setError('Choose a public authority before continuing.'); return } const draft = interpretationService.createDraft(session, session.interpretation); save({ ...session, draft }); setError(''); setStep('draft') }
-  const submit = async () => { if (!session.draft) return; setSubmitting(true); setError(''); try { const app = await rtiService.submit(session.draft, user.name); guidedRequestService.clear(); navigate(`/applications/${app.id}`, { replace: true }) } catch (err) { setError(err instanceof Error ? err.message : 'Submission failed.') } finally { setSubmitting(false) } }
-  const interpretation = session.interpretation
-  return <Shell user={user}><section className="guided-heading"><p className="eyebrow">Guided information request</p><h1>{step === 'need' ? 'What do you need information about?' : step === 'understood' ? 'Here’s what we understood.' : 'Your request is ready to review.'}</h1><p>{step === 'need' ? 'Use everyday language. You do not need to know which department handles it.' : step === 'understood' ? 'You stay in control—confirm the suggestion or change any part of it.' : 'We made this a structured information request. Edit any detail before submitting.'}</p></section><Progress step={step} />
-    {step === 'need' && <section className="guide-card"><label className="question-label" htmlFor="need">Tell us what happened or what record you need.</label><textarea id="need" rows={6} value={session.need} placeholder="For example: I want to know why the road repair near my home has been delayed." onChange={event => save({ need: event.target.value })} /><div className="prompt-row"><small>Try an example:</small>{examples.map(example => <button className="prompt-chip" key={example} onClick={() => save({ need: example })}>{example}</button>)}</div>{session.clarification && <aside className="clarification" role="status"><strong>One detail before we suggest a destination</strong><p>{session.clarification.question}</p><small>{session.clarification.detail}</small></aside>}{error && <ErrorState message={error} />}<button className="primary" onClick={interpret} disabled={busy}>{busy ? 'Understanding your question…' : 'See what RTI One understood'}</button><p className="quiet-note">Prototype suggestion only—no real government systems are contacted.</p></section>}
-    {step === 'understood' && interpretation && <section className="guide-card"><div className="understood"><div><p className="eyebrow">Your information need</p><p className="need-quote">“{session.need}”</p></div><p className="quiet-note">{interpretation.confidenceNote}</p></div><div className="interpret-grid"><label>Location<input value={interpretation.location} onChange={event => editInterpretation('location', event.target.value)} /></label><label>Government level<select value={interpretation.governmentLevel} onChange={event => editInterpretation('governmentLevel', event.target.value)}><option value="Central">Central</option><option value="State/UT">State/UT</option></select></label><label>Topic or department<input value={interpretation.topic} onChange={event => editInterpretation('topic', event.target.value)} /></label><label>Likely public authority<select value={interpretation.authorityId} onChange={event => editInterpretation('authorityId', event.target.value)}><option value="">Choose an authority</option>{authorities.filter(authority => authority.jurisdiction === interpretation.governmentLevel).map(authority => <option key={authority.id} value={authority.id}>{authority.name} — {authority.location}</option>)}</select></label></div>{error && <ErrorState message={error} />}<div className="flow-actions"><button className="secondary" onClick={() => setStep('need')}>Edit my question</button><button className="primary" onClick={generateDraft}>Create my RTI draft</button></div></section>}
-    {step === 'draft' && session.draft && <section className="guide-card"><div className="draft-intro"><div><p className="eyebrow">Structured request</p><h2>Ready to submit when you are.</h2></div><span className="status-pill">Draft</span></div><label>Public authority<select value={session.draft.authorityId} onChange={event => save({ ...session, draft: { ...session.draft!, authorityId: event.target.value } })}>{authorities.filter(authority => authority.jurisdiction === session.draft!.jurisdiction).map(authority => <option key={authority.id} value={authority.id}>{authority.name}</option>)}</select></label><label>Subject<input value={session.draft.subject} onChange={event => save({ ...session, draft: { ...session.draft!, subject: event.target.value } })} /></label><label>Your request<textarea rows={9} value={session.draft.requestText} onChange={event => save({ ...session, draft: { ...session.draft!, requestText: event.target.value } })} /></label>{error && <ErrorState message={error} />}<div className="flow-actions"><button className="secondary" onClick={() => setStep('understood')}>Back to interpretation</button><button className="primary" onClick={submit} disabled={submitting}>{submitting ? 'Submitting mock request…' : 'Submit mock RTI'}</button></div><p className="quiet-note">Submitting creates a synthetic registration number in this demo.</p></section>}
-  </Shell>
-}
-
-function ApplicationDetail({ user }: { user: User }) {
-  const { id = '' } = useParams(); const [app, setApp] = useState<RtiApplication | null | undefined>(undefined); const [authorities, setAuthorities] = useState<Authority[]>([])
-  useEffect(() => { rtiService.getApplication(id).then(setApp); rtiService.listAuthorities().then(setAuthorities) }, [id])
-  if (app === undefined) return <Shell user={user}><Loading /></Shell>
-  if (app === null) return <Shell user={user}><div className="empty"><h1>Case not found</h1><Link to="/dashboard">Return to my cases</Link></div></Shell>
-  return <Shell user={user}><section className="case-hero"><div><Link className="back-link" to="/dashboard">← My cases</Link><p className="eyebrow">Your information request</p><h1>{app.subject}</h1><p>{authorityName(app.authorityId, authorities)}</p></div><span className="status-pill large">{app.status}</span></section><section className="case-meta"><div><small>Registration number</small><strong>{app.id}</strong></div><div><small>Submitted</small><strong>{app.createdAt}</strong></div><div><small>Current stage</small><strong>Awaiting authority assignment</strong></div></section><div className="case-layout"><section className="card request-record"><p className="eyebrow">What you asked for</p><h2>Request record</h2><p>{app.requestText}</p></section><section><p className="eyebrow">Case progress</p><h2>Tracking timeline</h2><ol className="timeline">{app.timeline.map(event => <li key={event.title}><b>{event.title}</b><small>{event.date}</small><p>{event.detail}</p></li>)}</ol></section></div></Shell>
-}
+import { ApplicationDetail } from './ApplicationDetail'
+import { Cases } from './Cases'
+import { Help } from './Help'
+import { Home } from './Home'
+import { Login } from './Login'
+import { NewRti } from './NewRti'
+import { Shell } from './Shell'
 
 export function App() {
   const [user, setUser] = useState<User | null>(() => authService.getSession())
-  return <Routes><Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login onLogin={setUser} />} /><Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" replace />} /><Route path="/rti/new" element={user ? <NewRti user={user} /> : <Navigate to="/login" replace />} /><Route path="/applications/:id" element={user ? <ApplicationDetail user={user} /> : <Navigate to="/login" replace />} /><Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} /></Routes>
+
+  const guard = (node: ReactNode): ReactNode =>
+    user ? (
+      <Shell user={user} onLogout={() => setUser(null)}>
+        {node}
+      </Shell>
+    ) : (
+      <Navigate to="/login" replace />
+    )
+
+  return (
+    <Routes>
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/dashboard" replace /> : <Login onLogin={setUser} />}
+      />
+      <Route path="/dashboard" element={guard(<Home user={user!} />)} />
+      <Route path="/cases" element={guard(<Cases />)} />
+      <Route path="/rti/new" element={guard(<NewRti user={user!} />)} />
+      {/* Splat, not :id — registration numbers contain slashes (RTI/ONE/2026/00001). */}
+      <Route path="/applications/*" element={guard(<ApplicationDetail />)} />
+      <Route path="/help" element={guard(<Help />)} />
+      <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+    </Routes>
+  )
 }
