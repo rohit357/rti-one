@@ -500,3 +500,89 @@ h3 { font-size: 18px; letter-spacing: -.01em; margin: 0 0 var(--sp-2); }
   .progress { gap: 0; }
   .progress li:not(.active):not(.done) small { display: none; }
 }
+
+/* --- LLM-assisted interpretation surfaces --- */
+.intel-panel {
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  border: 1px solid var(--accent-line);
+  background: var(--accent-bg);
+  border-radius: var(--r-md);
+}
+.intel-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.intel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+}
+.intel-badge.is-ai { color: #0d3a56; background: var(--st-due-bg); border-color: #cfe2ee; }
+.intel-badge.is-offline { color: var(--st-draft); background: var(--st-draft-bg); border-color: var(--line); }
+.intel-confidence {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.intel-confidence.is-high { color: var(--st-submitted); background: var(--st-submitted-bg); }
+.intel-confidence.is-medium { color: var(--st-review); background: var(--st-review-bg); }
+.intel-confidence.is-low { color: var(--st-draft); background: var(--st-draft-bg); }
+.intel-explanation { margin: 0 0 var(--sp-3); color: var(--ink-soft); }
+.evidence-list { list-style: none; margin: 0 0 var(--sp-3); padding: 0; display: grid; gap: var(--sp-2); }
+.evidence {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.evidence-status {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface);
+}
+.evidence.is-explicit .evidence-status { color: var(--st-submitted); background: var(--st-submitted-bg); border-color: var(--accent-line); }
+.evidence.is-inferred .evidence-status { color: var(--st-review); background: var(--st-review-bg); border-color: #efdcb5; }
+.evidence.is-missing .evidence-status { color: var(--st-draft); background: var(--st-draft-bg); }
+.evidence-text b { color: var(--ink); font-weight: 600; }
+.missing-list { margin: var(--sp-2) 0 0; padding-left: var(--sp-5); color: var(--ink-soft); font-size: 14px; }
+
+.draft-source-note {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4);
+  border: 1px dashed var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.draft-source-note .your-words { margin: var(--sp-3) 0 0; color: var(--ink); font-style: italic; }
+.draft-source-note .your-words small {
+  display: block;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: var(--sp-1);
+}

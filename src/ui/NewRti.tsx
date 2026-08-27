@@ -6,8 +6,9 @@ import type {
   RequestInterpretation,
   User,
 } from '../domain/rti'
+import type { IntelligenceMode } from '../intelligence/api'
 import { guidedRequestService } from '../services/guidedRequestService'
-import { interpretationService } from '../services/interpretationService'
+import { intelligenceService } from '../services/intelligenceService'
 import { rtiService } from '../services/rtiService'
 import { ErrorState } from './kit'
 
@@ -40,6 +41,15 @@ function Progress({ step }: { step: FlowStep }) {
   )
 }
 
+function SourceBadge({ source }: { source?: 'ai' | 'deterministic' }) {
+  const ai = source === 'ai'
+  return (
+    <span className={`intel-badge ${ai ? 'is-ai' : 'is-offline'}`}>
+      {ai ? 'AI-assisted' : 'Offline interpretation'}
+    </span>
+  )
+}
+
 export function NewRti({ user }: { user: User }) {
   const navigate = useNavigate()
   const [session, setSession] = useState<GuidedRequestSession>(() => guidedRequestService.load())
@@ -49,7 +59,9 @@ export function NewRti({ user }: { user: User }) {
   })
   const [authorities, setAuthorities] = useState<Authority[]>([])
   const [busy, setBusy] = useState(false)
+  const [drafting, setDrafting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [draftMode, setDraftMode] = useState<IntelligenceMode | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -68,7 +80,7 @@ export function NewRti({ user }: { user: User }) {
     setBusy(true)
     setError('')
     try {
-      const result = await interpretationService.interpret(session.need)
+      const { result } = await intelligenceService.interpret(session.need)
       if (result.kind === 'clarification') {
         save({ need: session.need, clarification: result })
         return
@@ -89,15 +101,23 @@ export function NewRti({ user }: { user: User }) {
     save({ ...session, interpretation })
   }
 
-  const generateDraft = () => {
+  const generateDraft = async () => {
     if (!session.interpretation?.authorityId) {
       setError('Choose a public authority before continuing.')
       return
     }
-    const draft = interpretationService.createDraft(session, session.interpretation)
-    save({ ...session, draft })
+    setDrafting(true)
     setError('')
-    setStep('draft')
+    try {
+      const { draft, mode } = await intelligenceService.createDraft(session, session.interpretation)
+      setDraftMode(mode)
+      save({ ...session, draft })
+      setStep('draft')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We could not prepare your draft.')
+    } finally {
+      setDrafting(false)
+    }
   }
 
   const submit = async () => {
@@ -164,6 +184,13 @@ export function NewRti({ user }: { user: User }) {
               <strong>One detail before we suggest a destination</strong>
               <p>{session.clarification.question}</p>
               <small>{session.clarification.detail}</small>
+              {session.clarification.missingInformation && session.clarification.missingInformation.length > 0 && (
+                <ul className="missing-list">
+                  {session.clarification.missingInformation.map((item, i) => (
+                    <li key={`${item}-${i}`}>{item}</li>
+                  ))}
+                </ul>
+              )}
             </aside>
           )}
           {error && <ErrorState message={error} />}
@@ -185,6 +212,34 @@ export function NewRti({ user }: { user: User }) {
             </div>
             <p className="quiet-note">{interpretation.confidenceNote}</p>
           </div>
+
+          {(interpretation.source || interpretation.explanation || interpretation.evidence) && (
+            <div className="intel-panel">
+              <div className="intel-panel-head">
+                <SourceBadge source={interpretation.source} />
+                {interpretation.confidence && (
+                  <span className={`intel-confidence is-${interpretation.confidence}`}>
+                    Confidence: {interpretation.confidence}
+                  </span>
+                )}
+              </div>
+              {interpretation.explanation && <p className="intel-explanation">{interpretation.explanation}</p>}
+              {interpretation.evidence && interpretation.evidence.length > 0 && (
+                <ul className="evidence-list">
+                  {interpretation.evidence.map((item, i) => (
+                    <li key={`${item.label}-${i}`} className={`evidence is-${item.status}`}>
+                      <span className="evidence-status">{item.status}</span>
+                      <span className="evidence-text">
+                        <b>{item.label}:</b> {item.value}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="quiet-note">High model confidence is not proof — review and edit any field.</p>
+            </div>
+          )}
+
           <div className="interpret-grid">
             <label>
               Location
@@ -232,8 +287,8 @@ export function NewRti({ user }: { user: User }) {
             <button className="secondary" onClick={() => setStep('need')}>
               Edit my question
             </button>
-            <button className="primary" onClick={generateDraft}>
-              Create my RTI draft
+            <button className="primary" onClick={generateDraft} disabled={drafting}>
+              {drafting ? 'Preparing your draft…' : 'Create my RTI draft'}
             </button>
           </div>
         </section>
@@ -251,6 +306,20 @@ export function NewRti({ user }: { user: User }) {
               Draft
             </span>
           </div>
+
+          <div className="draft-source-note">
+            <span className={`intel-badge ${draftMode === 'ai' ? 'is-ai' : 'is-offline'}`}>
+              {draftMode === 'ai'
+                ? 'AI-drafted — every word is yours to edit'
+                : draftMode === 'fallback'
+                  ? 'Template draft — every word is yours to edit'
+                  : 'Draft — every word is yours to edit'}
+            </span>
+            <p className="your-words">
+              <small>Your original words</small>“{session.need}”
+            </p>
+          </div>
+
           <label>
             Public authority
             <select

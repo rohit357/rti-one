@@ -16,18 +16,37 @@ export interface RtiDraft {
   requestText: string
 }
 
+export type EvidenceStatus = 'explicit' | 'inferred' | 'missing'
+export type InterpretationSource = 'ai' | 'deterministic'
+export type Confidence = 'low' | 'medium' | 'high'
+
+export interface EvidenceItem {
+  label: string
+  value: string
+  status: EvidenceStatus
+}
+
 export interface RequestInterpretation {
   location: string
   governmentLevel: Jurisdiction
   topic: string
   authorityId: string
   confidenceNote: string
+  // Optional, additive: populated by the LLM-assisted path, absent on the
+  // deterministic fallback. UI guards on presence, so nothing breaks when absent.
+  source?: InterpretationSource
+  explanation?: string
+  confidence?: Confidence
+  evidence?: EvidenceItem[]
+  alternativeAuthorityIds?: string[]
 }
 
 export interface ClarificationRequest {
   kind: 'clarification'
   question: string
   detail: string
+  source?: InterpretationSource
+  missingInformation?: string[]
 }
 
 export type InterpretationResult =
