@@ -2,9 +2,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
 import { loadEnv } from 'vite'
 import { authorities } from '../src/data/authorities'
-import type { RequestInterpretation } from '../src/domain/rti'
+import type { KnownFacts, RequestInterpretation } from '../src/domain/rti'
 import { createGroqProvider } from './groqProvider'
 import { createIntelligenceEngine, type IntelligenceEngine } from './intelligenceHandler'
+import { configFromEnv, createRequestManager } from './requestManager'
 
 // Vite plugin that mounts the server-side intelligence API on the dev and
 // preview servers. The browser calls /api/* on the same origin; it never talks
@@ -73,6 +74,32 @@ function draftHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
   }
 }
 
+function guideHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
+  return (req, res, next) => {
+    if (req.method !== 'POST') return next()
+    readJson(req)
+      .then(async body => {
+        const need = typeof body.need === 'string' ? body.need : ''
+        const askedFields = Array.isArray(body.askedFields)
+          ? body.askedFields.filter((f): f is string => typeof f === 'string')
+          : []
+        const facts = body.facts && typeof body.facts === 'object' ? (body.facts as KnownFacts) : undefined
+        const sessionId = typeof body.sessionId === 'string' && body.sessionId ? body.sessionId : 'default'
+        sendJson(res, 200, await engine.guide({ need, askedFields, facts, sessionId }))
+      })
+      .catch(() => sendJson(res, 400, { error: 'bad-request' }))
+  }
+}
+
+// Dev-only: expose non-sensitive request-manager metrics (counts/latency, no
+// prompts, no keys) for local observability and the browser verification pass.
+function metricsHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
+  return (req, res, next) => {
+    if (req.method !== 'GET') return next()
+    sendJson(res, 200, engine.metrics())
+  }
+}
+
 export function intelligenceApiPlugin(): Plugin {
   let apiKey: string | undefined
 
@@ -80,9 +107,14 @@ export function intelligenceApiPlugin(): Plugin {
     const engine = createIntelligenceEngine({
       provider: createGroqProvider({ apiKey, fetchImpl: globalThis.fetch }),
       authorities,
+      // One manager per server so per-session budgets and metrics persist across
+      // requests. Limits are environment-configurable (see configFromEnv).
+      manager: createRequestManager(configFromEnv(process.env)),
     })
     middlewares.use('/api/interpret', interpretHandler(engine))
     middlewares.use('/api/draft', draftHandler(engine))
+    middlewares.use('/api/guide', guideHandler(engine))
+    middlewares.use('/api/metrics', metricsHandler(engine))
   }
 
   return {

@@ -37,7 +37,7 @@ export function clean(value: unknown, max = 240): string {
     .slice(0, max)
 }
 
-function cleanList(value: unknown, maxItems = 8, maxLen = 160): string[] {
+export function cleanList(value: unknown, maxItems = 8, maxLen = 160): string[] {
   if (!Array.isArray(value)) return []
   return value
     .map(item => clean(item, maxLen))

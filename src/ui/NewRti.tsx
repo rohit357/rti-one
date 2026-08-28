@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type {
   Authority,
+  GuidedQuestion,
   GuidedRequestSession,
+  KnownFacts,
   RequestInterpretation,
   User,
 } from '../domain/rti'
 import type { IntelligenceMode } from '../intelligence/api'
+import { isServiceType, SERVICE_LABELS } from '../knowledge/types'
+import { applyAnswer } from '../knowledge/routing'
 import { guidedRequestService } from '../services/guidedRequestService'
 import { intelligenceService } from '../services/intelligenceService'
 import { rtiService } from '../services/rtiService'
@@ -14,11 +18,20 @@ import { ErrorState } from './kit'
 
 const examples = [
   'I need records from the Ministry of Road Transport and Highways about a delayed repair.',
-  'I want records from the Ministry of Railways about accessibility work at my station.',
-  'I need records from Delhi PWD about a streetlight repair request.',
+  'The streetlight on my lane in Delhi has been broken for weeks.',
+  'The road repair near my home has been delayed.',
 ]
 
 type FlowStep = 'need' | 'understood' | 'draft'
+
+function newSessionId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  } catch {
+    // fall through
+  }
+  return `guided-${Date.now()}-${Math.round(Math.random() * 1e6)}`
+}
 
 function Progress({ step }: { step: FlowStep }) {
   const current = step === 'need' ? 1 : step === 'understood' ? 2 : 3
@@ -50,6 +63,44 @@ function SourceBadge({ source }: { source?: 'ai' | 'deterministic' }) {
   )
 }
 
+// A plain-language summary of the evolving understanding — no government jargon,
+// only what the citizen actually told us.
+function factChips(facts?: KnownFacts): Array<{ label: string; value: string }> {
+  if (!facts) return []
+  const chips: Array<{ label: string; value: string }> = []
+  if (facts.serviceType && isServiceType(facts.serviceType)) chips.push({ label: 'Issue', value: SERVICE_LABELS[facts.serviceType] })
+  const where = facts.state || facts.location
+  if (where) chips.push({ label: 'Where', value: where })
+  if (facts.governmentLevel) chips.push({ label: 'Level', value: facts.governmentLevel })
+  if (facts.mentionedAuthority) chips.push({ label: 'You mentioned', value: facts.mentionedAuthority })
+  return chips
+}
+
+function KnowSoFar({ facts, mode }: { facts?: KnownFacts; mode: IntelligenceMode | null }) {
+  const chips = factChips(facts)
+  if (chips.length === 0) return null
+  return (
+    <div className="know-so-far" role="status">
+      <div className="know-head">
+        <span className="know-title">What we know so far</span>
+        {mode && (
+          <span className={`intel-badge ${mode === 'ai' ? 'is-ai' : 'is-offline'}`}>
+            {mode === 'ai' ? 'AI-assisted' : 'Offline'}
+          </span>
+        )}
+      </div>
+      <ul className="know-chips">
+        {chips.map(chip => (
+          <li key={chip.label} className="know-chip">
+            <small>{chip.label}</small>
+            <b>{chip.value}</b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function NewRti({ user }: { user: User }) {
   const navigate = useNavigate()
   const [session, setSession] = useState<GuidedRequestSession>(() => guidedRequestService.load())
@@ -62,6 +113,8 @@ export function NewRti({ user }: { user: User }) {
   const [drafting, setDrafting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [draftMode, setDraftMode] = useState<IntelligenceMode | null>(null)
+  const [guideMode, setGuideMode] = useState<IntelligenceMode | null>(null)
+  const [answerText, setAnswerText] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -76,22 +129,59 @@ export function NewRti({ user }: { user: User }) {
     guidedRequestService.save(next)
   }
 
-  const interpret = async () => {
+  // Typing a new question invalidates any evolving guidance so stale facts or a
+  // stale question never linger against changed text.
+  const editNeed = (value: string) => {
+    save({
+      need: value,
+      sessionId: session.sessionId,
+      facts: undefined,
+      askedFields: undefined,
+      question: undefined,
+      candidateAuthorityIds: undefined,
+      interpretation: undefined,
+      clarification: undefined,
+    })
+    setGuideMode(null)
+  }
+
+  // One turn of adaptive guidance. `facts`/`askedFields` carry the evolving
+  // session state; a select-answer turn passes them so the server needs no model
+  // call. The result is either a route, one question, or a clarification.
+  const runGuide = async (need: string, askedFields: string[], facts: KnownFacts | undefined, sessionId: string) => {
     setBusy(true)
     setError('')
     try {
-      const { result } = await intelligenceService.interpret(session.need)
-      if (result.kind === 'clarification') {
-        save({ need: session.need, clarification: result })
-        return
+      const { result, facts: nextFacts, mode } = await intelligenceService.guide(need, askedFields, facts, sessionId)
+      setGuideMode(mode)
+      if (result.kind === 'route') {
+        save({ need, sessionId, facts: nextFacts, askedFields, interpretation: result.interpretation, question: undefined, clarification: undefined })
+        setStep('understood')
+      } else if (result.kind === 'question') {
+        save({ need, sessionId, facts: nextFacts, askedFields, question: result, candidateAuthorityIds: result.candidateAuthorityIds, interpretation: undefined, clarification: undefined })
+        setAnswerText('')
+      } else {
+        save({ need, sessionId, facts: nextFacts, askedFields, clarification: result, question: undefined, interpretation: undefined })
       }
-      save({ need: session.need, interpretation: result.interpretation })
-      setStep('understood')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'We could not interpret that request.')
+      setError(err instanceof Error ? err.message : 'We could not understand that request.')
     } finally {
       setBusy(false)
     }
+  }
+
+  const startGuide = () => {
+    const sessionId = session.sessionId ?? newSessionId()
+    runGuide(session.need, [], undefined, sessionId)
+  }
+
+  // Apply a selected/typed answer deterministically, then re-route. No model
+  // call: applyAnswer is pure and the server reuses the unchanged need.
+  const answer = (field: string, value: string) => {
+    const facts = applyAnswer(session.facts ?? { rawNeed: session.need }, field, value)
+    const askedFields = [...(session.askedFields ?? []), field]
+    const sessionId = session.sessionId ?? newSessionId()
+    runGuide(session.need, askedFields, facts, sessionId)
   }
 
   const editInterpretation = (key: keyof RequestInterpretation, value: string) => {
@@ -136,6 +226,7 @@ export function NewRti({ user }: { user: User }) {
   }
 
   const interpretation = session.interpretation
+  const question = session.question
 
   return (
     <div className="page guided">
@@ -169,16 +260,63 @@ export function NewRti({ user }: { user: User }) {
             rows={6}
             value={session.need}
             placeholder="For example: I want to know why the road repair near my home has been delayed."
-            onChange={event => save({ need: event.target.value })}
+            onChange={event => editNeed(event.target.value)}
           />
           <div className="prompt-row">
             <small>Try an example:</small>
             {examples.map(example => (
-              <button className="prompt-chip" key={example} onClick={() => save({ need: example })}>
+              <button className="prompt-chip" key={example} onClick={() => editNeed(example)}>
                 {example}
               </button>
             ))}
           </div>
+
+          <KnowSoFar facts={session.facts} mode={guideMode} />
+
+          {question && (
+            <div className="guide-question" role="group" aria-label="One quick question">
+              <div className="gq-head">
+                <strong>{question.question}</strong>
+                <p className="gq-why">{question.why}</p>
+              </div>
+              {question.inputMode === 'select' && question.options ? (
+                <div className="gq-options">
+                  {question.options.map(option => (
+                    <button
+                      key={option.value}
+                      className={`gq-option${option.value === '__unsure__' ? ' is-unsure' : ''}`}
+                      disabled={busy}
+                      onClick={() => answer(question.field, option.value)}
+                    >
+                      <span className="gq-option-label">{option.label}</span>
+                      {option.hint && <small>{option.hint}</small>}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <form
+                  className="gq-text"
+                  onSubmit={event => {
+                    event.preventDefault()
+                    if (answerText.trim()) answer(question.field, answerText.trim())
+                  }}
+                >
+                  <input
+                    value={answerText}
+                    placeholder="Type your answer"
+                    onChange={event => setAnswerText(event.target.value)}
+                  />
+                  <button className="primary" disabled={busy || !answerText.trim()}>
+                    Continue
+                  </button>
+                </form>
+              )}
+              <button className="link-button" onClick={() => save({ ...session, question: undefined })}>
+                Let me rephrase instead
+              </button>
+            </div>
+          )}
+
           {session.clarification && (
             <aside className="clarification" role="status">
               <strong>One detail before we suggest a destination</strong>
@@ -194,9 +332,11 @@ export function NewRti({ user }: { user: User }) {
             </aside>
           )}
           {error && <ErrorState message={error} />}
-          <button className="primary" onClick={interpret} disabled={busy}>
-            {busy ? 'Understanding your question…' : 'See what RTI One understood'}
-          </button>
+          {!question && (
+            <button className="primary" onClick={startGuide} disabled={busy || session.need.trim().length === 0}>
+              {busy ? 'Understanding your question…' : 'See what RTI One understood'}
+            </button>
+          )}
           <p className="quiet-note">
             Prototype suggestion only — no real government systems are contacted.
           </p>

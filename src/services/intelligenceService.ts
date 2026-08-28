@@ -1,6 +1,7 @@
-import type { GuidedRequestSession, InterpretationResult, RequestInterpretation, RtiDraft } from '../domain/rti'
-import type { DraftResponse, InterpretResponse } from '../intelligence/api'
+import type { GuidanceResult, GuidedRequestSession, InterpretationResult, KnownFacts, RequestInterpretation, RtiDraft } from '../domain/rti'
+import type { DraftResponse, GuideResponse, InterpretResponse } from '../intelligence/api'
 import { deterministicDraft, deterministicInterpret } from '../intelligence/deterministic'
+import { offlineExtract, routeFromFacts } from '../knowledge/routing'
 
 // Browser-facing intelligence client. It calls the same-origin /api endpoints
 // (which own the Groq key) and degrades gracefully to the local deterministic
@@ -8,10 +9,18 @@ import { deterministicDraft, deterministicInterpret } from '../intelligence/dete
 
 const INTERPRET_URL = '/api/interpret'
 const DRAFT_URL = '/api/draft'
+const GUIDE_URL = '/api/guide'
 const CLIENT_TIMEOUT = 15000
 
 // Cache by exact need so we do not re-hit the model for unchanged input.
 const interpretCache = new Map<string, InterpretResponse>()
+// Cache guided turns by (need + questions asked + answers) so an identical turn
+// is never re-posted — mirrors the server-side dedup.
+const guideCache = new Map<string, GuideResponse>()
+
+function guideKey(need: string, askedFields: string[], facts?: KnownFacts): string {
+  return `${need}::${[...askedFields].sort().join(',')}::${JSON.stringify(facts?.answers ?? {})}`
+}
 
 function looksLikeResult(value: unknown): value is InterpretationResult {
   return Boolean(value) && typeof value === 'object' && 'kind' in (value as object)
@@ -65,7 +74,32 @@ export const intelligenceService = {
     }
   },
 
+  // Phase 4: one turn of adaptive guidance. Sends the evolving facts so a
+  // select-answer turn needs no model call server-side. Falls back to local
+  // deterministic routing if the API is unreachable.
+  async guide(need: string, askedFields: string[] = [], facts?: KnownFacts, sessionId = 'local'): Promise<GuideResponse> {
+    const trimmed = (need ?? '').trim()
+    const key = guideKey(trimmed, askedFields, facts)
+    const cached = guideCache.get(key)
+    if (cached) return cached
+
+    try {
+      const data = (await postJson(GUIDE_URL, { need: trimmed, askedFields, facts, sessionId })) as GuideResponse
+      if (!data || !data.result || !data.facts) throw new Error('bad-shape')
+      guideCache.set(key, data)
+      return data
+    } catch {
+      const reuse = facts && facts.extracted && facts.rawNeed === trimmed
+      const f: KnownFacts = reuse ? facts : offlineExtract(trimmed)
+      const result: GuidanceResult = routeFromFacts(f, askedFields, 'deterministic')
+      const resp: GuideResponse = { result, facts: f, mode: 'fallback', reason: 'client-offline' }
+      guideCache.set(key, resp)
+      return resp
+    }
+  },
+
   clearCache() {
     interpretCache.clear()
+    guideCache.clear()
   },
 }

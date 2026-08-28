@@ -1,10 +1,9 @@
 import type { Authority } from '../domain/rti'
+import { toAuthorities } from '../knowledge'
 
-export const authorities: Authority[] = [
-  { id: 'central-morth', name: 'Ministry of Road Transport & Highways', jurisdiction: 'Central', location: 'New Delhi', description: 'National highways, road transport policy and road safety.' },
-  { id: 'central-railways', name: 'Ministry of Railways', jurisdiction: 'Central', location: 'New Delhi', description: 'Railway policy, operations and public services.' },
-  { id: 'central-urban', name: 'Ministry of Housing & Urban Affairs', jurisdiction: 'Central', location: 'New Delhi', description: 'Urban development and central housing programmes.' },
-  { id: 'state-mh-transport', name: 'Maharashtra Transport Department', jurisdiction: 'State/UT', location: 'Maharashtra', description: 'State transport services, permits and road safety.' },
-  { id: 'state-ka-urban', name: 'Karnataka Urban Development Department', jurisdiction: 'State/UT', location: 'Karnataka', description: 'Urban planning and state urban development.' },
-  { id: 'ut-delhi-pwd', name: 'Delhi Public Works Department', jurisdiction: 'State/UT', location: 'Delhi', description: 'Public works and civic infrastructure in Delhi.' }
-]
+// The flat Authority[] the app has always consumed is now a PROJECTION of the
+// richer, provenance-aware knowledge base (src/knowledge). The six original
+// authorities keep byte-identical id/name/jurisdiction/location/description, so
+// every existing consumer, grounding rule and test is unchanged; demo and added
+// records simply extend the list.
+export const authorities: Authority[] = toAuthorities()

@@ -2,7 +2,14 @@
 // any browser/client module. Provider logic is isolated behind this interface
 // so the model/provider can be swapped without touching UI or domain code.
 
-export type ChatResult = { ok: true; content: string } | { ok: false; reason: string }
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+}
+
+export type ChatResult =
+  | { ok: true; content: string; usage?: TokenUsage }
+  | { ok: false; reason: string }
 
 export interface ChatRequest {
   system: string
@@ -75,10 +82,15 @@ export function createGroqProvider(opts: GroqProviderOptions = {}): GroqProvider
 
         if (!response.ok) return { ok: false, reason: `http-${response.status}` }
 
-        const data = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> }
+        const data = (await response.json()) as {
+          choices?: Array<{ message?: { content?: unknown } }>
+          usage?: { prompt_tokens?: unknown; completion_tokens?: unknown }
+        }
         const content = data?.choices?.[0]?.message?.content
         if (typeof content !== 'string' || content.trim().length === 0) return { ok: false, reason: 'empty' }
-        return { ok: true, content }
+        const inputTokens = typeof data.usage?.prompt_tokens === 'number' ? data.usage.prompt_tokens : 0
+        const outputTokens = typeof data.usage?.completion_tokens === 'number' ? data.usage.completion_tokens : 0
+        return { ok: true, content, usage: { inputTokens, outputTokens } }
       } catch (error) {
         // Never surface the key or full request. Only classify the failure.
         const aborted = error instanceof Error && error.name === 'AbortError'

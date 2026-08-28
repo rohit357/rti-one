@@ -53,8 +53,60 @@ export type InterpretationResult =
   | { kind: 'ready'; interpretation: RequestInterpretation }
   | ClarificationRequest
 
+// --- Phase 4: knowledge-grounded adaptive guidance ------------------------
+
+// Structured, evolving picture of what the citizen has told us. `serviceType`
+// is a controlled-vocabulary string (see src/knowledge SERVICE_TYPES); it is
+// typed as string here so the domain stays independent of the knowledge layer.
+// Locations are only ever populated when the citizen actually stated them.
+export interface KnownFacts {
+  rawNeed: string
+  serviceType?: string
+  location?: string
+  state?: string
+  governmentLevel?: Jurisdiction
+  mentionedAuthority?: string
+  keywords?: string[]
+  extractedFacts?: string[]
+  missingInformation?: string[]
+  answers?: Record<string, string>
+  extracted?: boolean // true once fact extraction has run for this need
+  aiExtracted?: boolean // true when the facts came from the model (not the offline extractor)
+}
+
+export type GuidedInputMode = 'select' | 'text'
+
+export interface GuidedOption {
+  value: string
+  label: string
+  hint?: string
+}
+
+// One adaptive question, computed from the smallest discriminator that separates
+// the remaining candidate authorities. `field` names the discriminator so it is
+// never asked twice.
+export interface GuidedQuestion {
+  kind: 'question'
+  field: string
+  question: string
+  why: string
+  inputMode: GuidedInputMode
+  options?: GuidedOption[]
+  candidateAuthorityIds: string[]
+}
+
+export type GuidanceResult =
+  | { kind: 'route'; interpretation: RequestInterpretation }
+  | GuidedQuestion
+  | ClarificationRequest
+
 export interface GuidedRequestSession {
   need: string
+  sessionId?: string
+  facts?: KnownFacts
+  askedFields?: string[]
+  candidateAuthorityIds?: string[]
+  question?: GuidedQuestion
   interpretation?: RequestInterpretation
   clarification?: ClarificationRequest
   draft?: RtiDraft
