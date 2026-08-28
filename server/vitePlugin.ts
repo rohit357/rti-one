@@ -1,57 +1,25 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
 import { loadEnv } from 'vite'
 import { authorities } from '../src/data/authorities'
-import type { KnownFacts, RequestInterpretation } from '../src/domain/rti'
 import { createGroqProvider } from './groqProvider'
 import { createIntelligenceEngine, type IntelligenceEngine } from './intelligenceHandler'
 import { configFromEnv, createRequestManager } from './requestManager'
+import { draftReply, guideReply, interpretReply, metricsReply } from './apiHandlers'
+import { readJsonBody, sendJson } from './httpJson'
 
 // Vite plugin that mounts the server-side intelligence API on the dev and
-// preview servers. The browser calls /api/* on the same origin; it never talks
-// to Groq directly, and the API key stays in this Node process.
-
-const BODY_LIMIT = 100_000
-
-function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    let size = 0
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length
-      if (size > BODY_LIMIT) {
-        reject(new Error('too-large'))
-        req.destroy()
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => {
-      try {
-        const text = Buffer.concat(chunks).toString('utf8') || '{}'
-        const parsed = JSON.parse(text)
-        resolve(parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {})
-      } catch {
-        reject(new Error('bad-json'))
-      }
-    })
-    req.on('error', reject)
-  })
-}
-
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
-  res.statusCode = status
-  res.setHeader('content-type', 'application/json')
-  res.end(JSON.stringify(body))
-}
+// preview servers. It shares the exact request handlers with the Vercel
+// serverless functions in /api (see server/apiHandlers.ts) so local behaviour
+// matches production. The browser calls /api/* on the same origin; it never
+// talks to Groq directly, and the API key stays in this Node process.
 
 function interpretHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
   return (req, res, next) => {
     if (req.method !== 'POST') return next()
-    readJson(req)
+    readJsonBody(req)
       .then(async body => {
-        const need = typeof body.need === 'string' ? body.need : ''
-        sendJson(res, 200, await engine.interpret(need))
+        const reply = await interpretReply(engine, body)
+        sendJson(res, reply.status, reply.body)
       })
       .catch(() => sendJson(res, 400, { error: 'bad-request' }))
   }
@@ -60,15 +28,10 @@ function interpretHandler(engine: IntelligenceEngine): Connect.NextHandleFunctio
 function draftHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
   return (req, res, next) => {
     if (req.method !== 'POST') return next()
-    readJson(req)
+    readJsonBody(req)
       .then(async body => {
-        const need = typeof body.need === 'string' ? body.need : ''
-        const interpretation = body.interpretation
-        if (!interpretation || typeof interpretation !== 'object') {
-          sendJson(res, 400, { error: 'bad-request' })
-          return
-        }
-        sendJson(res, 200, await engine.draft(need, interpretation as RequestInterpretation))
+        const reply = await draftReply(engine, body)
+        sendJson(res, reply.status, reply.body)
       })
       .catch(() => sendJson(res, 400, { error: 'bad-request' }))
   }
@@ -77,15 +40,10 @@ function draftHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
 function guideHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
   return (req, res, next) => {
     if (req.method !== 'POST') return next()
-    readJson(req)
+    readJsonBody(req)
       .then(async body => {
-        const need = typeof body.need === 'string' ? body.need : ''
-        const askedFields = Array.isArray(body.askedFields)
-          ? body.askedFields.filter((f): f is string => typeof f === 'string')
-          : []
-        const facts = body.facts && typeof body.facts === 'object' ? (body.facts as KnownFacts) : undefined
-        const sessionId = typeof body.sessionId === 'string' && body.sessionId ? body.sessionId : 'default'
-        sendJson(res, 200, await engine.guide({ need, askedFields, facts, sessionId }))
+        const reply = await guideReply(engine, body)
+        sendJson(res, reply.status, reply.body)
       })
       .catch(() => sendJson(res, 400, { error: 'bad-request' }))
   }
@@ -96,7 +54,8 @@ function guideHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
 function metricsHandler(engine: IntelligenceEngine): Connect.NextHandleFunction {
   return (req, res, next) => {
     if (req.method !== 'GET') return next()
-    sendJson(res, 200, engine.metrics())
+    const reply = metricsReply(engine)
+    sendJson(res, reply.status, reply.body)
   }
 }
 

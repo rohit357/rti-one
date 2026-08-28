@@ -202,13 +202,49 @@ Flow: **citizen text → (LLM) extract explicit facts → retrieve candidate rec
   - **Dedup observed live:** re-submitting an identical need returned a cached extraction — `requestCount` stayed 3 while `cacheHits` went 0→1 (Case I in the browser). Final session metrics: 3 live calls, `fallbackCount:0`, `errorCount:0`, `retries:0`, latencies 2226/1818/1570 ms.
 - **Architecture audit (§13):** no `api.groq.com` in client `src/` (only `server/groqProvider.ts` + opt-in `scripts/smoke.mjs`); `dist/` grep for `gsk_`/`api.groq.com`/`GROQ_API_KEY`/`Bearer` = 0; no `gsk_` in any tracked source; `.env` gitignored **and** untracked; no `console.*` in `server/` (key/headers/prompts never logged); retry loop bounded by `maxRetries` with a `break`; no test can issue a live call; the only external dependency is Groq (server-side) — no government network dependency, all data synthetic/local.
 
+## Production deployment — Vercel serverless adapter (Phase 4.5)
+
+**Problem.** `/api/*` was delivered ONLY by the Vite middleware plugin (`configureServer`/`configurePreviewServer`). Vite does not run `configureServer` in a production build, so a Vercel static deploy served no `/api/*` → the client's transport failed → the safe deterministic fallback rendered as "Offline interpretation". The AI was never reached in production.
+
+**Fix — thin serverless functions reusing the shared engine.** No business logic, model, prompt, knowledge base, routing, UX, safety rule, or request-manager behaviour changed; only a second transport was added alongside the Vite one.
+
+```
+Browser → intelligenceService → POST /api/{interpret,draft,guide} (same origin)
+  ├─ local dev/preview: server/vitePlugin.ts (Vite middleware)     ┐ both call the SAME
+  └─ Vercel production:  api/{interpret,draft,guide,metrics}.ts     ┘ shared reply handlers
+        → server/apiHandlers.ts → getEngine() (server/engineSingleton.ts)
+        → createIntelligenceEngine (Groq provider, authorities, request manager)
+```
+
+- **New `api/*.ts`** — one thin Vercel function per endpoint (`interpret`, `draft`, `guide`, `metrics`). Each guards the method, parses the body, calls the shared reply, sends JSON — no business logic. Zero-config routing: `api/interpret.ts` → `/api/interpret`. `guide` is included because it is the Phase-4 endpoint the citizen journey actually calls (omitting it would leave production on the fallback).
+- **`server/apiHandlers.ts`** — transport-agnostic `{status, body}` replies (request parsing + validation + status codes) shared by BOTH the Vite plugin and the Vercel functions, so local and production are byte-identical.
+- **`server/httpJson.ts`** — shared `sendJson` + `readJsonBody`. `readJsonBody` uses Vercel's pre-parsed `req.body` when present, else reads the raw stream with the same 100 KB cap (works under both transports).
+- **`server/engineSingleton.ts`** — builds the engine from `process.env` (Vercel injects env vars there) and memoises it per process so warm invocations reuse one request manager; an explicit env (tests) is always built fresh.
+- **`server/vitePlugin.ts`** — refactored to call the same shared handlers; local-dev key loading via `loadEnv` (.env files) is unchanged, so local dev/preview still work exactly as before.
+- **Secrets.** Functions read `GROQ_API_KEY` from `process.env` only; never `VITE_*` (which would inline into the browser bundle). Provider never logs the key. Verified: the built `dist/` bundle contains 0 occurrences of the key, `gsk_`, `api.groq.com`, or `authorization`/`bearer`; the client references only same-origin `/api/interpret|draft|guide`.
+- **Cold-start note.** The request manager is in-memory per process, so serverless instances hold independent budgets/metrics and reset on cold start. This only widens rate limits and never affects safety (the deterministic fallback is always available). `/api/metrics` counters are per-warm-instance observability, not a global truth. A shared store (e.g. Redis) is the upgrade if global limits are ever required — out of scope.
+
+**Local verification evidence (this session):**
+- `npm run build` — PASS (`tsc -b` type-checks `api/` + `server/` + `src/`; client bundle emitted). `api` added to `tsconfig.node.json` include.
+- `npm test` — 64 passed / 12 files, fully offline (zero live Groq). Includes new `api/handlers.test.ts` (serverless wrappers exercised on the no-key fallback path: 405 method guard, body parse, JSON reply, 400 bad-request).
+- `git diff --check` — clean.
+- Bundle secret scan — 0 leaks (see Secrets above).
+- Real HTTP through the shared handlers (`vite preview`): `GET /api/metrics` → 200 counters (no Groq); `POST /api/interpret` → `mode:"ai"`, `kind:"ready"`, `authorityId:"central-railways"` (one bounded live call); short need → `mode:"fallback"`, `reason:"too-short"`. The Vercel functions call the identical shared reply logic.
+
+**NOT run here — live Vercel production smoke.** This environment has no Vercel CLI, no `.vercel` link, and no `VERCEL_TOKEN`, and the brief forbids committing (so a GitHub-integration deploy cannot be triggered either). The production smoke was therefore not executed and no production evidence is claimed. To finish it:
+1. Vercel → Project → Settings → Environment Variables → set `GROQ_API_KEY` (Production; server-side, NOT `VITE_`-prefixed).
+2. Deploy (`vercel --prod`, or push to the connected branch).
+3. ONE smoke call: `curl -s -X POST https://<deployment>/api/interpret -H 'content-type: application/json' -d '{"need":"I need records from the Ministry of Railways about lift repairs."}'` → expect `"mode":"ai"`. Then load the app, run the guided flow once, and confirm the browser Network tab shows same-origin `/api/*` only (no `api.groq.com`).
+- Framework detection is zero-config (Vite build → `dist`; `api/` → Node functions). If a first deploy needs pinning, add a minimal `vercel.json` (framework `vite`, functions runtime) — deliberately omitted here to avoid shipping config that could not be tested in this environment.
+- **Separate, pre-existing follow-up (out of this brief):** a Vite SPA on Vercel returns 404 on hard-refresh of a client route (e.g. `/applications/<id>`) unless a rewrite to `/index.html` is added that EXCLUDES `/api/*`. Unrelated to the reported "Offline interpretation" API bug; note for a routing-scoped task.
+
 ## Known limitations / risks
 
 - **Dataset is representative, NOT nationwide.** 10 records: 3 real Union ministries + 3 real State/UT departments (Maharashtra, Karnataka, Delhi) + 4 clearly-synthetic demo records. Only these three States/UTs and three Central ministries are covered; everything else (correctly) clarifies rather than routes. Do **not** describe this as national coverage.
 - **Real bodies are `unverified`, not `verified`.** Only the central RTI portal was confirmed this session; ministry/department records are real but un-re-confirmed (automated fetch unavailable). Before any real use, re-verify each mapping against its primary official source and set `verificationStatus`/`sourceUrl` accordingly; the schema already carries the fields.
 - **Demo records drive the multi-candidate showcase.** The 2–4-candidate adaptive-questioning demo (Delhi civic cluster, cross-state roads) leans on synthetic records. Replace them with verified real mappings before relying on those routes.
 - **Live Groq path: exercised, with a reasoning-model caveat.** The AI path now runs against a real key (see live evidence above). The one non-obvious finding: `gpt-oss-120b` is a *reasoning* model, so `max_tokens` must budget for reasoning **plus** the JSON, and `reasoning_effort: 'low'` is set to keep that fast and bounded — under-budgeting truncates the JSON and forces a silent permanent fallback. If the model is later swapped or its behaviour drifts, re-check that `finish_reason` is `'stop'` (not `'length'`). A light eval harness (scoring interpretations against expected authorities/clarifications, logging token/latency) is still recommended before relying on the AI path at scale.
-- **API delivery is a Vite middleware plugin, not a standalone server.** It runs under `vite dev` and `vite preview` (both wired), which suits a prototype. A production deploy behind a static host would need the two handlers rehosted as real serverless/API routes (the engine and intelligence modules are transport-agnostic and portable as-is). Because `vite.config.ts` imports the server chain, the build emits benign extensionless-import warnings.
+- **API delivery now has TWO transports over one shared engine** (see "Production deployment — Vercel serverless adapter" above): the Vite middleware plugin for `vite dev`/`vite preview`, and `api/*.ts` Vercel serverless functions for production. Both call the same `server/apiHandlers.ts`. The remaining open item is the **live Vercel production smoke**, which could not be run in this environment (no Vercel CLI/link/token; no-commit constraint) — it needs `GROQ_API_KEY` set in the Vercel project and one deploy. Because `vite.config.ts` imports the server chain, the build emits benign extensionless-import warnings.
 - **Small authority dataset (6).** Grounding is only as good as the dataset; most real-world needs outside these 6 authorities will (correctly) clarify rather than route. Growing the dataset was explicitly out of scope.
 - **No router-level automated test** (unchanged from prior phase). The slash-ID path is covered by a service/flow test but not through the actual router; a `jsdom` + testing-library harness is still the recommended next hardening step.
 - Prompt-injection defence is layered (untrusted-data framing in the prompt + hard grounding against the dataset). Grounding is the real guarantee: even a fully coerced model cannot emit an authority outside the dataset. This is unit-tested.
