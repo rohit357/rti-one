@@ -1,13 +1,13 @@
-import type { Authority, GuidanceResult, KnownFacts, RequestInterpretation, RtiDraft } from '../src/domain/rti'
-import type { DraftResponse, GuideResponse, InterpretResponse } from '../src/intelligence/api'
-import { safeJsonParse, validateModelOutput } from '../src/intelligence/contract'
-import { deterministicDraft, deterministicInterpret } from '../src/intelligence/deterministic'
-import { factsFromExtraction, validateExtractOutput } from '../src/intelligence/extract'
-import { ground } from '../src/intelligence/grounding'
-import { buildDraftPrompt, buildExtractPrompt, buildInterpretPrompt } from '../src/intelligence/prompt'
-import { offlineExtract, routeFromFacts } from '../src/knowledge/routing'
-import type { GroqProvider } from './groqProvider'
-import { createRequestManager, type RequestManager } from './requestManager'
+import type { Authority, GuidanceResult, KnownFacts, RequestInterpretation, RtiDraft } from '../src/domain/rti.js'
+import type { DraftResponse, GuideResponse, InterpretResponse } from '../src/intelligence/api.js'
+import { safeJsonParse, validateModelOutput } from '../src/intelligence/contract.js'
+import { deterministicDraft, deterministicInterpret } from '../src/intelligence/deterministic.js'
+import { factsFromExtraction, validateExtractOutput } from '../src/intelligence/extract.js'
+import { ground } from '../src/intelligence/grounding.js'
+import { buildDraftPrompt, buildExtractPrompt, buildInterpretPrompt } from '../src/intelligence/prompt.js'
+import { offlineExtract, routeFromFacts } from '../src/knowledge/routing.js'
+import type { GroqProvider } from './groqProvider.js'
+import { createRequestManager, type RequestManager } from './requestManager.js'
 
 // Orchestrates the LLM-assisted pipeline. Every failure mode degrades to the
 // safe deterministic path — a provider/model failure can never produce a

@@ -1,5 +1,5 @@
-import type { Authority, GuidedRequestSession, InterpretationResult, RequestInterpretation, RtiDraft } from '../domain/rti'
-import { authorities } from '../data/authorities'
+import type { Authority, GuidedRequestSession, InterpretationResult, RequestInterpretation, RtiDraft } from '../domain/rti.js'
+import { authorities } from '../data/authorities.js'
 
 // Deterministic, offline interpreter. This is the SAFE fallback used whenever
 // the LLM path is unavailable or its output cannot be trusted. It never invents

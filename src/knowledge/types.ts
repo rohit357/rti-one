@@ -1,4 +1,4 @@
-import type { Jurisdiction } from '../domain/rti'
+import type { Jurisdiction } from '../domain/rti.js'
 
 // Knowledge layer schema. The knowledge base — NOT the model — is the source of
 // truth for which public authorities exist and what each is responsible for.

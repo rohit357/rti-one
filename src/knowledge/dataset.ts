@@ -1,4 +1,4 @@
-import type { AuthorityRecord, Provenance } from './types'
+import type { AuthorityRecord, Provenance } from './types.js'
 
 // Representative — NOT nationwide — synthetic-friendly knowledge base for the
 // RTI One prototype.

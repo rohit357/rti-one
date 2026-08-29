@@ -6,11 +6,11 @@ import type {
   InterpretationSource,
   KnownFacts,
   RequestInterpretation,
-} from '../domain/rti'
-import { authorityRecords } from './dataset'
-import { retrieveCandidates, type ScoredRecord } from './retrieval'
-import type { AuthorityRecord, ServiceType } from './types'
-import { isServiceType, SERVICE_LABELS, SERVICE_TYPES } from './types'
+} from '../domain/rti.js'
+import { authorityRecords } from './dataset.js'
+import { retrieveCandidates, type ScoredRecord } from './retrieval.js'
+import type { AuthorityRecord, ServiceType } from './types.js'
+import { isServiceType, SERVICE_LABELS, SERVICE_TYPES } from './types.js'
 
 // Deterministic routing + adaptive questioning over retrieved candidates. The
 // knowledge base decides authority existence and jurisdiction; this module

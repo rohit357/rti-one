@@ -1,5 +1,5 @@
-import type { Authority, RequestInterpretation } from '../domain/rti'
-import { SERVICE_LABELS, SERVICE_TYPES } from '../knowledge/types'
+import type { Authority, RequestInterpretation } from '../domain/rti.js'
+import { SERVICE_LABELS, SERVICE_TYPES } from '../knowledge/types.js'
 
 export interface ChatPrompt {
   system: string

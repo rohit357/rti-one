@@ -1,4 +1,4 @@
-import type { GuidanceResult, InterpretationResult, KnownFacts, RequestInterpretation, RtiDraft } from '../domain/rti'
+import type { GuidanceResult, InterpretationResult, KnownFacts, RequestInterpretation, RtiDraft } from '../domain/rti.js'
 
 // Wire contract shared by the server handler and the browser client, so the
 // client never has to import anything from the server/ tree.

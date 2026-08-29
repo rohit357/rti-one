@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { metricsReply } from '../server/apiHandlers'
-import { getEngine } from '../server/engineSingleton'
-import { sendJson } from '../server/httpJson'
+import { metricsReply } from '../server/apiHandlers.js'
+import { getEngine } from '../server/engineSingleton.js'
+import { sendJson } from '../server/httpJson.js'
 
 // Vercel serverless function -> GET /api/metrics. Non-sensitive request-manager
 // counters (counts + latency only; no prompts, no keys). On serverless these are

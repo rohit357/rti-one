@@ -1,7 +1,7 @@
-import { authorities } from '../src/data/authorities'
-import { createGroqProvider } from './groqProvider'
-import { createIntelligenceEngine, type IntelligenceEngine } from './intelligenceHandler'
-import { configFromEnv, createRequestManager } from './requestManager'
+import { authorities } from '../src/data/authorities.js'
+import { createGroqProvider } from './groqProvider.js'
+import { createIntelligenceEngine, type IntelligenceEngine } from './intelligenceHandler.js'
+import { configFromEnv, createRequestManager } from './requestManager.js'
 
 // Builds the intelligence engine for serverless (Vercel) invocations. On Vercel
 // the secrets live in process.env, so — unlike the Vite plugin, which also reads

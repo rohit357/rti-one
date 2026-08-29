@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { interpretReply } from '../server/apiHandlers'
-import { getEngine } from '../server/engineSingleton'
-import { readJsonBody, sendJson } from '../server/httpJson'
+import { interpretReply } from '../server/apiHandlers.js'
+import { getEngine } from '../server/engineSingleton.js'
+import { readJsonBody, sendJson } from '../server/httpJson.js'
 
 // Vercel serverless function -> POST /api/interpret. Thin transport wrapper; all
 // logic lives in the shared engine. GROQ_API_KEY stays in the server-side

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { guideReply } from '../server/apiHandlers'
-import { getEngine } from '../server/engineSingleton'
-import { readJsonBody, sendJson } from '../server/httpJson'
+import { guideReply } from '../server/apiHandlers.js'
+import { getEngine } from '../server/engineSingleton.js'
+import { readJsonBody, sendJson } from '../server/httpJson.js'
 
 // Vercel serverless function -> POST /api/guide. This is the Phase-4 guided-flow
 // endpoint the citizen journey calls. Thin transport wrapper; the shared engine

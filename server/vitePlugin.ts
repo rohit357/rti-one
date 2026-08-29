@@ -1,11 +1,11 @@
 import type { Connect, Plugin, PreviewServer, ViteDevServer } from 'vite'
 import { loadEnv } from 'vite'
-import { authorities } from '../src/data/authorities'
-import { createGroqProvider } from './groqProvider'
-import { createIntelligenceEngine, type IntelligenceEngine } from './intelligenceHandler'
-import { configFromEnv, createRequestManager } from './requestManager'
-import { draftReply, guideReply, interpretReply, metricsReply } from './apiHandlers'
-import { readJsonBody, sendJson } from './httpJson'
+import { authorities } from '../src/data/authorities.js'
+import { createGroqProvider } from './groqProvider.js'
+import { createIntelligenceEngine, type IntelligenceEngine } from './intelligenceHandler.js'
+import { configFromEnv, createRequestManager } from './requestManager.js'
+import { draftReply, guideReply, interpretReply, metricsReply } from './apiHandlers.js'
+import { readJsonBody, sendJson } from './httpJson.js'
 
 // Vite plugin that mounts the server-side intelligence API on the dev and
 // preview servers. It shares the exact request handlers with the Vercel

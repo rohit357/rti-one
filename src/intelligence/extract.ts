@@ -1,6 +1,6 @@
-import type { EvidenceStatus, KnownFacts } from '../domain/rti'
-import { isServiceType } from '../knowledge/types'
-import { clean, cleanList } from './contract'
+import type { EvidenceStatus, KnownFacts } from '../domain/rti.js'
+import { isServiceType } from '../knowledge/types.js'
+import { clean, cleanList } from './contract.js'
 
 // The strict structured contract for the FACT-EXTRACTION model call. The model's
 // only job is to read the citizen's own words and report what they stated. It

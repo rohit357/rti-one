@@ -1,14 +1,14 @@
-import type { Authority } from '../domain/rti'
-import { authorityRecords } from './dataset'
-import type { AuthorityRecord } from './types'
+import type { Authority } from '../domain/rti.js'
+import { authorityRecords } from './dataset.js'
+import type { AuthorityRecord } from './types.js'
 
 // Access layer over the knowledge base. Everything the app consumes is keyed by
 // stable `id`; nothing depends on array order.
 
 export { authorityRecords }
-export type { AuthorityRecord } from './types'
-export { SERVICE_LABELS, SERVICE_TYPES, isServiceType } from './types'
-export type { ServiceType } from './types'
+export type { AuthorityRecord } from './types.js'
+export { SERVICE_LABELS, SERVICE_TYPES, isServiceType } from './types.js'
+export type { ServiceType } from './types.js'
 
 // Project a rich record down to the legacy Authority shape. The six original
 // authorities keep byte-identical fields, so every existing consumer and test is

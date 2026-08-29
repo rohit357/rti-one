@@ -1,7 +1,7 @@
-import type { KnownFacts } from '../domain/rti'
-import { authorityRecords } from './dataset'
-import type { AuthorityRecord, ServiceType } from './types'
-import { isServiceType } from './types'
+import type { KnownFacts } from '../domain/rti.js'
+import { authorityRecords } from './dataset.js'
+import type { AuthorityRecord, ServiceType } from './types.js'
+import { isServiceType } from './types.js'
 
 // Deterministic retrieval over the knowledge base. Given the facts we know so
 // far, return the compatible candidate authorities ranked by match strength.

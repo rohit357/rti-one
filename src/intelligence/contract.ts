@@ -1,4 +1,4 @@
-import type { Confidence, EvidenceStatus } from '../domain/rti'
+import type { Confidence, EvidenceStatus } from '../domain/rti.js'
 
 // The strict structured contract the model must return. This mirrors only the
 // fields the product needs — nothing here is trusted until it is validated by

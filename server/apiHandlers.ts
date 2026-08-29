@@ -1,5 +1,5 @@
-import type { KnownFacts, RequestInterpretation } from '../src/domain/rti'
-import type { IntelligenceEngine } from './intelligenceHandler'
+import type { KnownFacts, RequestInterpretation } from '../src/domain/rti.js'
+import type { IntelligenceEngine } from './intelligenceHandler.js'
 
 // Transport-agnostic request handlers. Each takes the parsed JSON body plus the
 // shared engine and returns a { status, body } reply. Both the Vite middleware

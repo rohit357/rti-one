@@ -1,5 +1,5 @@
-import type { Authority } from '../domain/rti'
-import { toAuthorities } from '../knowledge'
+import type { Authority } from '../domain/rti.js'
+import { toAuthorities } from '../knowledge/index.js'
 
 // The flat Authority[] the app has always consumed is now a PROJECTION of the
 // richer, provenance-aware knowledge base (src/knowledge). The six original

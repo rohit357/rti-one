@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { draftReply } from '../server/apiHandlers'
-import { getEngine } from '../server/engineSingleton'
-import { readJsonBody, sendJson } from '../server/httpJson'
+import { draftReply } from '../server/apiHandlers.js'
+import { getEngine } from '../server/engineSingleton.js'
+import { readJsonBody, sendJson } from '../server/httpJson.js'
 
 // Vercel serverless function -> POST /api/draft. Thin transport wrapper; the
 // shared engine owns drafting and grounding. GROQ_API_KEY stays server-side.

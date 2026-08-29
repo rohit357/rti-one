@@ -1,4 +1,4 @@
-import type { ChatResult } from './groqProvider'
+import type { ChatResult } from './groqProvider.js'
 
 // Centralized, server-side guard around every model call. It protects the Groq
 // key's budget during development, testing and demos: per-session call cap,

@@ -1,6 +1,6 @@
-import type { Authority, EvidenceItem, InterpretationResult, RequestInterpretation } from '../domain/rti'
-import type { ModelInterpretation } from './contract'
-import { topicForAuthority } from './deterministic'
+import type { Authority, EvidenceItem, InterpretationResult, RequestInterpretation } from '../domain/rti.js'
+import type { ModelInterpretation } from './contract.js'
+import { topicForAuthority } from './deterministic.js'
 
 // Grounding turns validated (but still untrusted) model output into a product
 // result. The authority dataset is the ONLY source of truth: the model may rank
